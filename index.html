@@ -1,0 +1,346 @@
+﻿<html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smallbyte Multiventures Reconciliation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+            background-color: #f4f4f9;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .input-group input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .input-group button {
+            background-color: #5cb85c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .summary {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        #reconciliation-section, #records-section {
+            margin-top: 30px;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #calculate-balance-btn {
+            background-color: #007bff;
+        }
+        #reconcile-btn {
+            background-color: #f0ad4e;
+        }
+        #daily-balance, #yesterday-balance, #grand-balance {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        #records-list li {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #record-details {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+            padding: 5px 10px;
+            margin-top: 0;
+        }
+        #export-csv-btn {
+            background-color: #28a745;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Smallbyte Multiventures Reconciliation</h1>
+
+    <div class="container">
+        <h2>Today's Entries (<span id="current-date"></span>)</h2>
+        
+        <div id="credit-entries">
+            <h3>Credits</h3>
+            <div class="input-group">
+                <input type="number" class="credit-amount" placeholder="Amount" value="0" oninput="updateTotals()">
+                <input type="text" class="credit-description" placeholder="Description">
+            </div>
+        </div>
+        <button onclick="addEntry('credit')">Add Another Credit</button>
+        <div class="summary">
+            Total Credits: <span id="total-credits">0</span>
+        </div>
+
+        <div id="debit-entries">
+            <h3>Debits</h3>
+            <div class="input-group">
+                <input type="number" class="debit-amount" placeholder="Amount" value="0" oninput="updateTotals()">
+                <input type="text" class="debit-description" placeholder="Description">
+            </div>
+        </div>
+        <button onclick="addEntry('debit')">Add Another Debit</button>
+        <div class="summary">
+            Total Debits: <span id="total-debits">0</span>
+        </div>
+
+        <button id="calculate-balance-btn">Calculate Today's Balance</button>
+        <div id="daily-balance"></div>
+    </div>
+
+    <div id="reconciliation-section" class="container">
+        <h2>Reconciliation</h2>
+        <div id="yesterday-balance">Yesterday's Balance: 0</div>
+        <button id="reconcile-btn">Reconcile Today's Balance</button>
+        <div id="grand-balance"></div>
+    </div>
+
+    <div id="records-section" class="container">
+        <h2>Daily Records</h2>
+        <button id="export-csv-btn">Export Records as CSV</button>
+        <ul id="records-list"></ul>
+        <div id="record-details">
+            Select a date to view details.
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('current-date').textContent = new Date().toLocaleDateString();
+            updateYesterdayBalanceDisplay();
+            loadRecords();
+
+            document.getElementById('calculate-balance-btn').addEventListener('click', () => {
+                const totalCredits = parseFloat(document.getElementById('total-credits').textContent.replace(/,/g, ''));
+                const totalDebits = parseFloat(document.getElementById('total-debits').textContent.replace(/,/g, ''));
+                const dailyBalance = totalCredits - totalDebits;
+
+                document.getElementById('daily-balance').textContent = `Today's Calculated Balance: ${dailyBalance.toLocaleString()}`;
+
+                if (confirm(`Today's balance is ${dailyBalance.toLocaleString()}. Do you want to save this record?`)) {
+                    saveDailyRecord(totalCredits, totalDebits, dailyBalance);
+                    alert("Record saved!");
+                }
+            });
+
+            document.getElementById('reconcile-btn').addEventListener('click', () => {
+                const todayRecord = getTodayRecord();
+                if (!todayRecord) {
+                    alert("Please calculate and save today's balance first.");
+                    return;
+                }
+                const yesterdayBalance = getYesterdayBalance();
+                const newGrandBalance = yesterdayBalance + todayRecord.balance;
+                
+                if (confirm(`Reconcile? Grand balance will be ${newGrandBalance.toLocaleString()}.`)) {
+                    localStorage.setItem('yesterdayBalance', newGrandBalance);
+                    updateYesterdayBalanceDisplay();
+                    document.getElementById('grand-balance').textContent = `New Grand Balance: ${newGrandBalance.toLocaleString()}`;
+                    alert("Reconciliation complete!");
+                }
+            });
+
+            document.getElementById('export-csv-btn').addEventListener('click', exportToCsv);
+        });
+
+        function addEntry(type) {
+            const container = document.getElementById(`${type}-entries`);
+            const newEntry = document.createElement('div');
+            newEntry.className = 'input-group';
+            newEntry.innerHTML = `
+                <input type="number" class="${type}-amount" placeholder="Amount" value="0" oninput="updateTotals()">
+                <input type="text" class="${type}-description" placeholder="Description">
+            `;
+            container.appendChild(newEntry);
+        }
+
+        function updateTotals() {
+            let totalCredits = 0;
+            document.querySelectorAll('.credit-amount').forEach(input => {
+                const value = input.value.replace(/,/g, '');
+                totalCredits += parseFloat(value) || 0;
+            });
+            document.getElementById('total-credits').textContent = totalCredits.toLocaleString();
+
+            let totalDebits = 0;
+            document.querySelectorAll('.debit-amount').forEach(input => {
+                const value = input.value.replace(/,/g, '');
+                totalDebits += parseFloat(value) || 0;
+            });
+            document.getElementById('total-debits').textContent = totalDebits.toLocaleString();
+        }
+
+        function saveDailyRecord(totalCredits, totalDebits, dailyBalance) {
+            const records = JSON.parse(localStorage.getItem('dailyRecords')) || [];
+            
+            const creditEntries = Array.from(document.querySelectorAll('.credit-amount')).map((input, index) => ({
+                amount: parseFloat(input.value.replace(/,/g, '')),
+                description: document.querySelectorAll('.credit-description')[index].value
+            }));
+            
+            const debitEntries = Array.from(document.querySelectorAll('.debit-amount')).map((input, index) => ({
+                amount: parseFloat(input.value.replace(/,/g, '')),
+                description: document.querySelectorAll('.debit-description')[index].value
+            }));
+            
+            const newRecord = {
+                id: new Date().getTime(), // Unique ID for each record
+                date: new Date().toLocaleDateString(),
+                credits: creditEntries,
+                totalCredits: totalCredits,
+                debits: debitEntries,
+                totalDebits: totalDebits,
+                balance: dailyBalance
+            };
+            
+            records.push(newRecord);
+            localStorage.setItem('dailyRecords', JSON.stringify(records));
+            
+            loadRecords();
+        }
+
+        function loadRecords() {
+            const records = JSON.parse(localStorage.getItem('dailyRecords')) || [];
+            const list = document.getElementById('records-list');
+            list.innerHTML = '';
+            
+            records.forEach((record) => {
+                const listItem = document.createElement('li');
+                
+                const recordInfo = document.createElement('span');
+                recordInfo.textContent = `Record for: ${record.date} (Balance: ${record.balance.toLocaleString()})`;
+                recordInfo.style.cursor = 'pointer';
+                recordInfo.addEventListener('click', () => showRecordDetails(record));
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevents the parent li click event
+                    deleteRecord(record.id);
+                });
+
+                listItem.appendChild(recordInfo);
+                listItem.appendChild(deleteBtn);
+                list.appendChild(listItem);
+            });
+        }
+        
+        function showRecordDetails(record) {
+            const detailsDiv = document.getElementById('record-details');
+            let creditsHtml = record.credits.map(c => `<li>${c.description}: ${c.amount.toLocaleString()}</li>`).join('');
+            let debitsHtml = record.debits.map(d => `<li>${d.description}: ${d.amount.toLocaleString()}</li>`).join('');
+
+            detailsDiv.innerHTML = `
+                <h4>Details for ${record.date}</h4>
+                <p><strong>Total Credits:</strong> ${record.totalCredits.toLocaleString()}</p>
+                <ul>${creditsHtml}</ul>
+                <p><strong>Total Debits:</strong> ${record.totalDebits.toLocaleString()}</p>
+                <ul>${debitsHtml}</ul>
+                <p><strong>Daily Balance:</strong> ${record.balance.toLocaleString()}</p>
+            `;
+        }
+
+        function deleteRecord(id) {
+            if (confirm("Are you sure you want to delete this record? This action cannot be undone.")) {
+                let records = JSON.parse(localStorage.getItem('dailyRecords')) || [];
+                records = records.filter(record => record.id !== id);
+                localStorage.setItem('dailyRecords', JSON.stringify(records));
+                
+                loadRecords();
+                document.getElementById('record-details').innerHTML = 'Select a date to view details.';
+            }
+        }
+
+        function getYesterdayBalance() {
+            return parseFloat(localStorage.getItem('yesterdayBalance')) || 0;
+        }
+
+        function updateYesterdayBalanceDisplay() {
+            const balance = getYesterdayBalance();
+            document.getElementById('yesterday-balance').textContent = `Yesterday's Balance: ${balance.toLocaleString()}`;
+        }
+        
+        function getTodayRecord() {
+            const records = JSON.parse(localStorage.getItem('dailyRecords')) || [];
+            const todayDate = new Date().toLocaleDateString();
+            // Find the most recent record for today's date
+            const todayRecord = records.slice().reverse().find(r => r.date === todayDate);
+            return todayRecord || null;
+        }
+
+        function exportToCsv() {
+            const records = JSON.parse(localStorage.getItem('dailyRecords')) || [];
+            if (records.length === 0) {
+                alert("No records to export.");
+                return;
+            }
+
+            const headers = ["Date", "Total Credits", "Total Debits", "Daily Balance"];
+            let csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + '\n';
+            
+            records.forEach(record => {
+                const row = [
+                    `"${record.date}"`,
+                    record.totalCredits,
+                    record.totalDebits,
+                    record.balance
+                ];
+                csvContent += row.join(',') + '\n';
+            });
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "reconciliation_records.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
